@@ -1,0 +1,91 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  POSTGRES_DB: vetplatform_ci
+  VET_APP_PASSWORD: ci_app_password
+  VET_MIGRATOR_PASSWORD: ci_migrator_password
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci_admin_password
+          POSTGRES_DB: vetplatform_ci
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d vetplatform_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: backend/package-lock.json
+
+      - run: npm ci
+
+      - name: Bootstrap database roles (RLS-restricted app role + owner role)
+        env:
+          PGPASSWORD: ci_admin_password
+        run: |
+          psql -v ON_ERROR_STOP=1 -h localhost -U postgres -d "$POSTGRES_DB" \
+            -v dbname="$POSTGRES_DB" -v app_password="$VET_APP_PASSWORD" -v migrator_password="$VET_MIGRATOR_PASSWORD" \
+            -f ../docker/postgres/roles.sql
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Endpoint access-declaration guard
+        run: npm run check:conventions
+
+      - name: Unit tests (domain logic, no external services)
+        run: npm test
+
+      - name: Apply migrations
+        env:
+          MIGRATION_DATABASE_URL: postgresql://vet_migrator:${{ env.VET_MIGRATOR_PASSWORD }}@localhost:5432/${{ env.POSTGRES_DB }}
+        run: npm run migrate
+
+      - name: Integration tests (real PostgreSQL — RLS, audit chain, RBAC seed)
+        env:
+          DATABASE_URL: postgresql://vet_app:${{ env.VET_APP_PASSWORD }}@localhost:5432/${{ env.POSTGRES_DB }}
+          MIGRATION_DATABASE_URL: postgresql://vet_migrator:${{ env.VET_MIGRATOR_PASSWORD }}@localhost:5432/${{ env.POSTGRES_DB }}
+        run: npm run test:db
+
+      - name: Build
+        run: npm run build
+
+      - name: Export OpenAPI contract
+        env:
+          DATABASE_URL: postgresql://vet_app:${{ env.VET_APP_PASSWORD }}@localhost:5432/${{ env.POSTGRES_DB }}
+          OPENAPI_OUT: openapi.generated.json
+        run: npm run openapi:export
+        # Once a module's endpoints are approved (card gate, §42.8) and openapi.json is committed for it,
+        # replace the line above with:
+        #   npm run openapi:export && diff -u openapi.json openapi.generated.json
+        # so any uncommitted contract drift fails the build (ADR-04, contract-first).
