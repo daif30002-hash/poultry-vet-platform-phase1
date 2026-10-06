@@ -1,0 +1,40 @@
+{
+  "name": "vet-platform-backend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Poultry veterinary office platform - API",
+  "engines": { "node": ">=22.18.0" },
+  "scripts": {
+    "build": "nest build",
+    "start": "node dist/main.js",
+    "start:dev": "nest start --watch",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint .",
+    "test": "node --test \"src/**/*.test.ts\"",
+    "test:db": "node --test \"test/db/*.test.ts\"",
+    "migrate": "node src/database/migrate-cli.ts",
+    "openapi:export": "node dist/tools/export-openapi.js",
+    "check:conventions": "node ../scripts/check-conventions.mjs"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.0.0",
+    "@nestjs/core": "^11.0.0",
+    "@nestjs/platform-express": "^11.0.0",
+    "@nestjs/swagger": "^11.0.0",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.1",
+    "helmet": "^8.0.0",
+    "pg": "^8.13.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^11.0.0",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.10.0",
+    "@types/pg": "^8.11.0",
+    "eslint": "^9.17.0",
+    "typescript": "^5.8.0",
+    "typescript-eslint": "^8.18.0"
+  }
+}
